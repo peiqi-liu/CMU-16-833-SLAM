@@ -25,24 +25,11 @@ class Resampling:
         """
         TODO : Add your code here
         """
-        M = X_bar.shape[0]
-
-        # Normalize weights
-        weights = X_bar[:, 3]
-        weights = weights / np.sum(weights)
-
-        # Draw M samples with replacement
-        indices = np.random.choice(M, size=M, p=weights)
-
-        # Resample
-        X_bar_resampled = X_bar[indices].copy()
-
-        # Reset weights to uniform
-        X_bar_resampled[:, 3] = 1.0 / M
-
+        X_bar_resampled =  np.zeros_like(X_bar)
         return X_bar_resampled
+    
 
-    def low_variance_sampler(self, X_bar, occupancy_map = None):
+    def low_variance_sampler(self, X_bar):
         """
         param[in] X_bar : [num_particles x 4] sized array containing [x, y, theta, wt] values for all particles
         param[out] X_bar_resampled : [num_particles x 4] sized array containing [x, y, theta, wt] values for resampled set of particles
@@ -51,13 +38,17 @@ class Resampling:
         TODO : Add your code here
         """
         M = X_bar.shape[0]
-
-        weights = X_bar[:, 3]
-        weights = weights / np.sum(weights)
-
         X_bar_resampled = np.zeros_like(X_bar)
 
-        r = np.random.uniform(0, 1.0 / M)
+        # Normalize weights (do NOT modify X_bar in-place)
+        weights = X_bar[:, 3].astype(float)
+        w_sum = np.sum(weights)
+        if w_sum <= 0.0 or not np.isfinite(w_sum):
+            weights = np.ones(M, dtype=float) / M
+        else:
+            weights = weights / w_sum
+
+        r = np.random.uniform(0.0, 1.0 / M)
         c = weights[0]
         i = 0
 
@@ -65,11 +56,17 @@ class Resampling:
             U = r + m / M
             while U > c:
                 i += 1
+                # guard (numerical issues)
+                if i >= M:
+                    i = M - 1
+                    break
                 c += weights[i]
 
             X_bar_resampled[m, :] = X_bar[i, :]
 
-        # Reset weights
+        # Reset weights to uniform after resampling (standard PF)
         X_bar_resampled[:, 3] = 1.0 / M
 
         return X_bar_resampled
+
+

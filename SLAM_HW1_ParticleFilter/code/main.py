@@ -29,7 +29,7 @@ def visualize_map(occupancy_map):
 def visualize_timestep(X_bar, tstep, output_path):
     x_locs = X_bar[:, 0] / 10.0
     y_locs = X_bar[:, 1] / 10.0
-    scat = plt.scatter(x_locs, y_locs, c='r', marker='o', s=10)
+    scat = plt.scatter(x_locs, y_locs, c='r', marker='o')
     plt.savefig('{}/{:04d}.png'.format(output_path, tstep))
     plt.pause(0.00001)
     scat.remove()
@@ -82,6 +82,7 @@ def init_particles_freespace(num_particles, occupancy_map):
 
     X_bar_init = np.hstack((x0_vals, y0_vals, theta0_vals, w0_vals))
     return X_bar_init
+
 
 
 if __name__ == '__main__':
