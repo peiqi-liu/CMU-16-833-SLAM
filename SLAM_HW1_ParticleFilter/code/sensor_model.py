@@ -5,28 +5,6 @@
 '''
 
 import numpy as np
-import math
-import time
-from matplotlib import pyplot as plt
-from scipy.stats import norm
-
-from map_reader import MapReader
-
-
-def occupancy(x, resolution, occupancy_map):
-    xMap = int(math.floor(x[0] // resolution))
-    yMap = int(math.floor(x[1] // resolution))
-    return occupancy_map[xMap, yMap]
-
-
-def inBound(x, resolution, mapSize):
-    xMap = math.floor(x[0] // resolution)
-    yMap = math.floor(x[1] // resolution)
-    if (xMap >= 0) and (xMap < mapSize) and (yMap >= 0) and (yMap < mapSize):
-        return True
-    else:
-        return False
-
 
 class SensorModel:
     """
@@ -38,27 +16,17 @@ class SensorModel:
         TODO : Tune Sensor Model parameters here
         The original numbers are for reference but HAVE TO be tuned.
         """
-        self._z_hit = 10
-        self._z_short = 0.1
-        self._z_max = 0.1
-        self._z_rand = 0.1
-
-        self._sigma_hit = 50
-        self._lambda_short = 0.1
-
-        """ Occupancy map specs """
+        self.z_hit = 150
+        self.z_short = 17.5
+        self.z_max = 15
+        self.z_rand = 100
+        self.sigma_hit = 100
+        self.lambda_short =15
         self.OccMap = occupancy_map
-        self.OccMapSize = np.size(occupancy_map)
-        self.resolution = 10
-
-        """ Laser specs """
-        self.laserMax = 8100  # Laser max range
-        self.nLaser = 180 // 5
-        self.laserX = np.zeros((self.nLaser, 1))
-        self.laserY = np.zeros((self.nLaser, 1))
-        self.beamsRange = np.zeros((self.nLaser, 1))
-
-        self.offset = 25
+        self.resolution = 10.0
+        self.laserMax = 8183.0
+        self.nLaser = 60
+        self.laser_offset = 25.0
 
     def _wrap2pi(self, angle):
         return angle - 2 * np.pi * np.floor((angle + np.pi) / (2 * np.pi))
@@ -69,14 +37,14 @@ class SensorModel:
         z_reading = np.asarray(z_reading)
 
         # ----- HIT -----
-        pHit = np.exp(-0.5 * (z_reading - z_star)**2 / self._sigma_hit**2)
-        pHit /= (np.sqrt(2 * np.pi) * self._sigma_hit)
+        pHit = np.exp(-0.5 * (z_reading - z_star)**2 / self.sigma_hit**2)
+        pHit /= (np.sqrt(2 * np.pi) * self.sigma_hit)
 
         valid_hit = (z_reading >= 0) & (z_reading <= self.laserMax)
         pHit *= valid_hit
 
         # ----- SHORT -----
-        pShort = self._lambda_short * np.exp(-self._lambda_short * z_reading)
+        pShort = self.lambda_short * np.exp(-self.lambda_short * z_reading)
 
         valid_short = (z_reading >= 0) & (z_reading <= z_star)
         pShort *= valid_short
@@ -91,13 +59,13 @@ class SensorModel:
 
         # ----- MIXTURE -----
         p = (
-            self._z_hit * pHit +
-            self._z_short * pShort +
-            self._z_max * pMax +
-            self._z_rand * pRand
+            self.z_hit * pHit + \
+            self.z_short * pShort + \
+            self.z_max * pMax + \
+            self.z_rand * pRand \
         )
 
-        p /= (self._z_hit + self._z_short + self._z_max + self._z_rand)
+        p /= (self.z_hit + self.z_short + self.z_max + self.z_rand)
 
         return p
 
@@ -108,14 +76,14 @@ class SensorModel:
         # Calculate laser offset position
         # The laser is often slightly ahead of the robot center
         ang_offset = self._wrap2pi(myPhi - np.pi / 2)
-        offSetX = xc + self.offset * np.cos(ang_offset)
-        offSetY = yc + self.offset * np.sin(ang_offset)
+        offSetX = xc + self.laser_offset * np.cos(ang_offset)
+        offSetY = yc + self.laser_offset * np.sin(ang_offset)
 
         # 1. Generate all beam angles at once
         angStep = np.pi / self.nLaser
         angles = self._wrap2pi(myPhi - np.pi/2 + angStep * np.arange(1, self.nLaser + 1))
 
-        # 2. Create the range steps (800 -> 1000 for better coverage)
+        # 2. Create the range steps
         num_steps = 1000 
         r = np.linspace(0, self.laserMax, num_steps)
 
@@ -136,12 +104,14 @@ class SensorModel:
         # We initialize with False and only check valid coordinates
         occ = np.zeros((num_steps, self.nLaser), dtype=bool)
         occ[valid_mask] = np.abs(self.OccMap[yInt[valid_mask], xInt[valid_mask]]) > 0.35
+        print(occ.shape)
 
         # 7. Find the first 'True' in each column (each beam)
         # np.argmax returns the index of the first True. 
         # If no True is found, it returns 0 (which is why we need a hit mask).
         hit_indices = np.argmax(occ, axis=0)
         has_hit = np.any(occ, axis=0)
+        print(has_hit.shape)
 
         # 8. Calculate final ranges
         # Default to laserMax, then update those that actually hit something
@@ -178,6 +148,8 @@ class SensorModel:
         z_reading = np.array(z_t1_arr[::step])
 
         zt_star = self.rayCast(x_t1)
+
+        print(zt_star.shape)
 
         probs = self.getProbability(zt_star, z_reading)
 
