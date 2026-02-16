@@ -24,6 +24,12 @@ class MotionModel:
         self._alpha3 = 0.01
         self._alpha4 = 0.01
 
+    def _wrap2pi(self,angle):
+        
+        return angle - 2*np.pi * np.floor((angle + np.pi) / (2*np.pi))
+
+    def sample(self,mu,sigma):
+        return np.random.normal(mu,sigma)
 
     def update(self, u_t0, u_t1, x_t0):
         """
@@ -35,4 +41,30 @@ class MotionModel:
         """
         TODO : Add your code here
         """
-        return np.random.rand(3)
+
+        # NO MOTION
+        if u_t1[0] == u_t0[0] and u_t1[1] == u_t0[1] and u_t1[2] == u_t0[2]:
+            return x_t0          
+
+        # MOTION    
+        x_t1 = np.zeros_like(x_t0)
+        delta_base_rotation = np.arctan2(u_t1[1] - u_t0[1], u_t1[0] - u_t0[0]) - u_t0[2]
+        delta_base_rotation = self._wrap2pi(delta_base_rotation)
+        delta_base_translation = np.sqrt((u_t1[0] - u_t0[0])**2 + (u_t1[1] - u_t0[1])**2)
+        delta_directional_rotation = u_t1[2] - u_t0[2] - delta_base_rotation
+        delta_directional_rotation = self._wrap2pi(delta_directional_rotation)
+        
+        Rot1 = delta_base_rotation - self.sample(0, self._alpha1 * delta_base_rotation**2 + \
+                                self._alpha2 * delta_base_translation**2)
+        Trans = delta_base_translation - self.sample(0,self._alpha3 * delta_base_translation**2 + \
+                                     self._alpha4 * delta_base_rotation**2 + self._alpha4*delta_directional_rotation**2)
+        Rot2 = delta_directional_rotation - self.sample(0, self._alpha1 * delta_directional_rotation**2 + \
+                                self._alpha2 * delta_base_translation**2)
+        Rot1 = self._wrap2pi(Rot1)
+        Rot2 = self._wrap2pi(Rot2)
+
+        x_t1[0] = x_t0[0] + Trans * np.cos(x_t0[2] + Rot1)
+        x_t1[1] = x_t0[1] + Trans * np.sin(x_t0[2] + Rot1)
+        x_t1[2] = x_t0[2] + Rot1 + Rot2
+
+        return x_t1
