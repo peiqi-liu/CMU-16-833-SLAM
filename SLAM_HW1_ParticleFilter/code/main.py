@@ -103,8 +103,10 @@ if __name__ == '__main__':
     parser.add_argument('--output', default='results')
     parser.add_argument('--num_particles', default=500, type=int)
     parser.add_argument('--visualize', action='store_true')
+    parser.add_argument('--seed', default=42, type=int)
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
     src_path_map = args.path_to_map
     src_path_log = args.path_to_log
     os.makedirs(args.output, exist_ok=True)
@@ -187,10 +189,10 @@ if __name__ == '__main__':
         RESAMPLING
         """
         X_bar = resampler.low_variance_sampler(X_bar)
-        # if time_idx % 50 == 0:
-        #     X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
-        # else:
-        #     X_bar = resampler.low_variance_sampler(X_bar)
+        if time_idx % 20 == 0:
+            X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
+        else:
+            X_bar = resampler.low_variance_sampler(X_bar)
 
         if args.visualize:
             visualize_timestep(X_bar, time_idx, args.output)

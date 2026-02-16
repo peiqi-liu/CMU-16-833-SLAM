@@ -12,147 +12,111 @@ class SensorModel:
     [Chapter 6.3]
     """
     def __init__(self, occupancy_map):
-        """
-        TODO : Tune Sensor Model parameters here
-        The original numbers are for reference but HAVE TO be tuned.
-        """
-        self.z_hit = 150
-        self.z_short = 17.5
-        self.z_max = 15
-        self.z_rand = 100
-        self.sigma_hit = 100
-        self.lambda_short =15
-        self.OccMap = occupancy_map
-        self.resolution = 10.0
-        self.laserMax = 8183.0
-        self.nLaser = 60
-        self.laser_offset = 25.0
-
-    def _wrap2pi(self, angle):
-        return angle - 2 * np.pi * np.floor((angle + np.pi) / (2 * np.pi))
-
-    def getProbability(self, z_star, z_reading):
-
-        z_star = np.asarray(z_star)
-        z_reading = np.asarray(z_reading)
-
-        # ----- HIT -----
-        pHit = np.exp(-0.5 * (z_reading - z_star)**2 / self.sigma_hit**2)
-        pHit /= (np.sqrt(2 * np.pi) * self.sigma_hit)
-
-        valid_hit = (z_reading >= 0) & (z_reading <= self.laserMax)
-        pHit *= valid_hit
-
-        # ----- SHORT -----
-        pShort = self.lambda_short * np.exp(-self.lambda_short * z_reading)
-
-        valid_short = (z_reading >= 0) & (z_reading <= z_star)
-        pShort *= valid_short
-
-        # ----- MAX -----
-        pMax = (z_reading >= self.laserMax).astype(float)
-
-        # ----- RANDOM -----
-        pRand = np.ones_like(z_reading) / self.laserMax
-        valid_rand = (z_reading >= 0) & (z_reading < self.laserMax)
-        pRand *= valid_rand
-
-        # ----- MIXTURE -----
-        p = (
-            self.z_hit * pHit + \
-            self.z_short * pShort + \
-            self.z_max * pMax + \
-            self.z_rand * pRand \
-        )
-
-        p /= (self.z_hit + self.z_short + self.z_max + self.z_rand)
-
-        return p
-
-    def rayCast(self, x_t1):
-        # x_t1 is [x, y, theta]
-        xc, yc, myPhi = x_t1
+        # Parameters (tuned for stability)
+        self._z_hit = 10.0
+        self._z_short = 0.1
+        self._z_max = 0.1
+        self._z_rand = 1.0
         
-        # Calculate laser offset position
-        # The laser is often slightly ahead of the robot center
-        ang_offset = self._wrap2pi(myPhi - np.pi / 2)
-        offSetX = xc + self.laser_offset * np.cos(ang_offset)
-        offSetY = yc + self.laser_offset * np.sin(ang_offset)
-
-        # 1. Generate all beam angles at once
-        angStep = np.pi / self.nLaser
-        angles = self._wrap2pi(myPhi - np.pi/2 + angStep * np.arange(1, self.nLaser + 1))
-
-        # 2. Create the range steps
-        num_steps = 1000 
-        r = np.linspace(0, self.laserMax, num_steps)
-
-        # 3. Use broadcasting to get all (x, y) coordinates for all beams
-        # Resulting shapes: (num_steps, nLaser)
-        xs = offSetX + r[:, np.newaxis] * np.cos(angles)
-        ys = offSetY + r[:, np.newaxis] * np.sin(angles)
-
-        # 4. Map coordinates to occupancy grid indices
-        xInt = np.floor(xs / self.resolution).astype(int)
-        yInt = np.floor(ys / self.resolution).astype(int)
-
-        # 5. Create a valid mask to prevent index-out-of-bounds
-        # Assuming map is 800x800 based on your code
-        valid_mask = (xInt >= 0) & (xInt < 800) & (yInt >= 0) & (yInt < 800)
-
-        # 6. Check occupancy
-        # We initialize with False and only check valid coordinates
-        occ = np.zeros((num_steps, self.nLaser), dtype=bool)
-        occ[valid_mask] = np.abs(self.OccMap[yInt[valid_mask], xInt[valid_mask]]) > 0.35
-        print(occ.shape)
-
-        # 7. Find the first 'True' in each column (each beam)
-        # np.argmax returns the index of the first True. 
-        # If no True is found, it returns 0 (which is why we need a hit mask).
-        hit_indices = np.argmax(occ, axis=0)
-        has_hit = np.any(occ, axis=0)
-        print(has_hit.shape)
-
-        # 8. Calculate final ranges
-        # Default to laserMax, then update those that actually hit something
-        beamsRange = np.full(self.nLaser, self.laserMax)
-        beamsRange[has_hit] = r[hit_indices[has_hit]]
-
-        # laserX and laserY are usually for visualization; 
-        # if you need them, you can calculate them from beamsRange and angles
-        return beamsRange
+        self._sigma_hit = 150.0
+        self._lambda_short = 0.1
+        self._max_range = 1000  # cm
+        self._min_probability = 0.35
+        self._subsampling = 10  # Use every 10th beam (18 beams total)
+        
+        self.occupancy_map = occupancy_map # Expected shape [Height, Width]
+        self.resolution = 10 # cm per pixel (standard for these maps)
+        self.laser_offset = 25 # cm from robot center to laser
 
     def beam_range_finder_model(self, z_t1_arr, x_t1):
         """
-        param[in] z_t1_arr : laser range readings [array of 180 values] at time t
-        param[in] x_t1 : particle state belief [x, y, theta] at time t [world_frame]
-        param[out] prob_zt1 : likelihood of a range scan zt1 at time t
+        Calculates the likelihood of a laser scan given a particle pose.
         """
+        # 1. Subsample laser readings to reduce computation
+        z_readings = z_t1_arr[::self._subsampling]
+        num_beams = len(z_readings)
+        
+        # 2. Get expected ranges (z_star) via vectorized ray casting
+        z_stars = self._vectorized_ray_cast(x_t1, num_beams)
+        
+        # 3. Calculate components (Vectorized across all beams)
+        # Hit: Gaussian distribution
+        p_hit = np.exp(-0.5 * (z_readings - z_stars)**2 / self._sigma_hit**2)
+        p_hit /= (self._sigma_hit * np.sqrt(2 * np.pi))
+        
+        # Short: Exponential distribution
+        # Note: eta calculation is simplified; p_short is only for z < z_star
+        p_short = np.where(z_readings < z_stars, 
+                           self._lambda_short * np.exp(-self._lambda_short * z_readings), 0)
+        p_short /= (1 - np.exp(-self._lambda_short * np.maximum(z_stars, 1e-9)))
+
+        # Max: Point mass at max range
+        p_max = (z_readings >= self._max_range).astype(float)
+        
+        # Rand: Uniform distribution
+        p_rand = np.where(z_readings < self._max_range, 1.0 / self._max_range, 0)
+        
+        # 4. Mixture Model
+        p_total = (self._z_hit * p_hit + 
+                   self._z_short * p_short + 
+                   self._z_max * p_max + 
+                   self._z_rand * p_rand)
+        
+        # Normalize weights
+        p_total /= (self._z_hit + self._z_short + self._z_max + self._z_rand)
+        
+        # 5. Log-Likelihood to avoid numerical underflow
+        # We sum logs instead of multiplying small decimals
+        prob_zt1 = np.exp(np.sum(np.log(p_total + 1e-10)))
+        
+        return prob_zt1
+
+    def _vectorized_ray_cast(self, x_t1, num_beams):
         """
-        TODO : Add your code here
+        Simulates ray casting by projecting multiple distances for all beams at once.
         """
-        # q = 0
-
-        # step = int(180 / self.nLaser)
-        # z_reading = [z_t1_arr[n] for n in range(0, 180, step)]
-        # zt_star, laserX, laserY = self.rayCast(x_t1)
-        # probs = np.zeros(self.nLaser)
-        # for i in range(self.nLaser):
-        #     probs[i] = self.getProbability(zt_star[i], z_reading[i])
-        #     q += np.log(probs[i])
-
-        # q = self.nLaser / np.abs(q)
-        # return q
-
-        step = int(180 / self.nLaser)
-        z_reading = np.array(z_t1_arr[::step])
-
-        zt_star = self.rayCast(x_t1)
-
-        print(zt_star.shape)
-
-        probs = self.getProbability(zt_star, z_reading)
-
-        q = np.sum(np.log(probs + 1e-12))
-        # return q
-        return np.exp(q)
+        x, y, theta = x_t1
+        
+        # Laser position in world frame
+        start_x = x + self.laser_offset * np.cos(theta)
+        start_y = y + self.laser_offset * np.sin(theta)
+        
+        # Angles for each beam: from -90 to +90 degrees relative to robot heading
+        angles = np.linspace(theta - np.pi/2, theta + np.pi/2, num_beams)
+        
+        # Define search steps (from 0 to max_range)
+        # We step by resolution to ensure we don't jump over walls
+        steps = np.arange(0, self._max_range, self.resolution)
+        
+        # Vectorized projection: [num_steps, num_beams]
+        # x_coords = start_x + dist * cos(angle)
+        cos_a = np.cos(angles)
+        sin_a = np.sin(angles)
+        
+        # Use broadcasting to get all points at once
+        x_pts = start_x + steps[:, np.newaxis] * cos_a
+        y_pts = start_y + steps[:, np.newaxis] * sin_a
+        
+        # Convert to map indices
+        ix = (x_pts / self.resolution).astype(int)
+        iy = (y_pts / self.resolution).astype(int)
+        
+        # Check map bounds
+        mask = (ix >= 0) & (ix < self.occupancy_map.shape[1]) & \
+               (iy >= 0) & (iy < self.occupancy_map.shape[0])
+        
+        # Initialize z_stars with max range
+        z_stars = np.full(num_beams, float(self._max_range))
+        
+        # For each beam, find the first index where the map is occupied
+        for b in range(num_beams):
+            beam_mask = mask[:, b]
+            # Map lookup: get occupancy values for this specific beam's path
+            occupancy_values = self.occupancy_map[iy[beam_mask, b], ix[beam_mask, b]]
+            
+            # Find first index where occupancy > threshold
+            hits = np.where(np.abs(occupancy_values) > self._min_probability)[0]
+            if len(hits) > 0:
+                z_stars[b] = steps[hits[0]]
+                
+        return z_stars

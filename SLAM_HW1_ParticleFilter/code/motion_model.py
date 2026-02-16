@@ -15,17 +15,15 @@ class MotionModel:
     [Chapter 5]
     """
     def __init__(self):
-        """
-        TODO : Tune Motion Model parameters here
-        The original numbers are for reference but HAVE TO be tuned.
-        """
-        self._alpha1 = 0.01
-        self._alpha2 = 0.01
+        # Noise parameters: 
+        # alpha1, alpha2: rotation noise
+        # alpha3, alpha4: translation noise
+        self._alpha1 = 0.001
+        self._alpha2 = 0.001
         self._alpha3 = 0.01
-        self._alpha4 = 0.01
+        self._alpha4 = 0.05
 
     def _wrap2pi(self,angle):
-        
         return angle - 2*np.pi * np.floor((angle + np.pi) / (2*np.pi))
 
     def sample(self,mu,sigma):
@@ -41,30 +39,48 @@ class MotionModel:
         """
         TODO : Add your code here
         """
-
-        # NO MOTION
-        if u_t1[0] == u_t0[0] and u_t1[1] == u_t0[1] and u_t1[2] == u_t0[2]:
-            return x_t0          
-
-        # MOTION    
-        x_t1 = np.zeros_like(x_t0)
-        delta_base_rotation = np.arctan2(u_t1[1] - u_t0[1], u_t1[0] - u_t0[0]) - u_t0[2]
-        delta_base_rotation = self._wrap2pi(delta_base_rotation)
-        delta_base_translation = np.sqrt((u_t1[0] - u_t0[0])**2 + (u_t1[1] - u_t0[1])**2)
-        delta_directional_rotation = u_t1[2] - u_t0[2] - delta_base_rotation
-        delta_directional_rotation = self._wrap2pi(delta_directional_rotation)
+        # 1. Calculate the relative motion in the odometry frame
+        # We find the 'delta' between the two odometry readings
+        dx = u_t1[0] - u_t0[0]
+        dy = u_t1[1] - u_t0[1]
         
-        Rot1 = delta_base_rotation - self.sample(0, self._alpha1 * delta_base_rotation**2 + \
-                                self._alpha2 * delta_base_translation**2)
-        Trans = delta_base_translation - self.sample(0,self._alpha3 * delta_base_translation**2 + \
-                                     self._alpha4 * delta_base_rotation**2 + self._alpha4*delta_directional_rotation**2)
-        Rot2 = delta_directional_rotation - self.sample(0, self._alpha1 * delta_directional_rotation**2 + \
-                                self._alpha2 * delta_base_translation**2)
-        Rot1 = self._wrap2pi(Rot1)
-        Rot2 = self._wrap2pi(Rot2)
+        # Initial rotation to point toward the new position
+        delta_rot1 = np.arctan2(dy, dx) - u_t0[2]
+        # Straight line distance
+        delta_trans = np.sqrt(dx**2 + dy**2)
+        # Final rotation to match the current heading
+        delta_rot2 = u_t1[2] - u_t0[2] - delta_rot1
 
-        x_t1[0] = x_t0[0] + Trans * np.cos(x_t0[2] + Rot1)
-        x_t1[1] = x_t0[1] + Trans * np.sin(x_t0[2] + Rot1)
-        x_t1[2] = x_t0[2] + Rot1 + Rot2
+        # Handle the case where the robot didn't move much (atan2 becomes unstable)
+        if delta_trans < 1e-3:
+            delta_rot1 = 0.0
+            delta_rot2 = u_t1[2] - u_t0[2]
 
+        # 2. Sample the noisy movement
+        # Each particle gets its own unique noise based on the alphas
+        num_particles = 1 if x_t0.ndim == 1 else x_t0.shape[0]
+        
+        # Calculate variances for the noise
+        var_rot1 = self._alpha1 * delta_rot1**2 + self._alpha2 * delta_trans**2
+        var_trans = self._alpha3 * delta_trans**2 + self._alpha4 * (delta_rot1**2 + delta_rot2**2)
+        var_rot2 = self._alpha1 * delta_rot2**2 + self._alpha2 * delta_trans**2
+
+        # Generate noisy deltas (Normal distribution)
+        noisy_rot1 = delta_rot1 - np.random.normal(0, np.sqrt(np.abs(var_rot1)), num_particles)
+        noisy_trans = delta_trans - np.random.normal(0, np.sqrt(np.abs(var_trans)), num_particles)
+        noisy_rot2 = delta_rot2 - np.random.normal(0, np.sqrt(np.abs(var_rot2)), num_particles)
+
+        # 3. Apply the noisy deltas to the particle's previous world state
+        # x_t1 = [x, y, theta]
+        x_old = x_t0[..., 0]
+        y_old = x_t0[..., 1]
+        theta_old = x_t0[..., 2]
+
+        x_new = x_old + noisy_trans * np.cos(theta_old + noisy_rot1)
+        y_new = y_old + noisy_trans * np.sin(theta_old + noisy_rot1)
+        theta_new = self._wrap2pi(theta_old + noisy_rot1 + noisy_rot2)
+
+        # Combine back into [N, 3] array
+        x_t1 = np.hstack((x_new, y_new, theta_new))
+        
         return x_t1
