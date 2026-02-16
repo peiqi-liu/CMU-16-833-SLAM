@@ -13,20 +13,20 @@ class SensorModel:
     """
     def __init__(self, occupancy_map):
         # Parameters (tuned for stability)
-        self._z_hit = 10.0
-        self._z_short = 1.0
-        self._z_max = 1.0
-        self._z_rand = 10
+        self._z_hit = 150
+        self._z_short = 2
+        self._z_max = 0.5
+        self._z_rand = 100
 
         self._sigma_hit = 50.0      # cm
-        self._lambda_short = 0.05
-        self._max_range = 8000  # cm
+        self._lambda_short = 0.01
+        self._max_range = 1000  # cm
         self._min_probability = 0.35
         
         self.occupancy_map = occupancy_map # Expected shape [Height, Width]
         self.resolution = 10 # cm per pixel (standard for these maps)
         self.laser_offset = 25 # cm from robot center to laser
-        self.num_beams = 90
+        self.num_beams = 30
         self._subsampling = 180 // self.num_beams  # Use every 10th beam (18 beams total)
 
     def visualize_scan(self, z_t1_arr, x_t1):
@@ -119,8 +119,9 @@ class SensorModel:
         
         # 5. Log-Likelihood to avoid numerical underflow
         # We sum logs instead of multiplying small decimals
-        prob_zt1 = np.exp(np.sum(np.log(p_total + 1e-10)))
-        return prob_zt1
+        # prob_zt1 = np.exp(np.sum(np.log(p_total + 1e-10)))
+        log_sum = np.sum(np.log(p_total + 1e-10))
+        return log_sum / np.abs(log_sum)
 
     def _vectorized_ray_cast(self, x_t1, num_beams):
         """

@@ -18,10 +18,10 @@ class MotionModel:
         # Noise parameters: 
         # alpha1, alpha2: rotation noise
         # alpha3, alpha4: translation noise
-        self._alpha1 = 0.01
-        self._alpha2 = 0.01
-        self._alpha3 = 0.025
-        self._alpha4 = 0.025
+        self._alpha1 = 0.001
+        self._alpha2 = 0.001
+        self._alpha3 = 0.001
+        self._alpha4 = 0.001
 
     def _wrap2pi(self,angle):
         return angle - 2*np.pi * np.floor((angle + np.pi) / (2*np.pi))
