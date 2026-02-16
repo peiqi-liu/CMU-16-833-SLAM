@@ -13,12 +13,12 @@ class SensorModel:
     """
     def __init__(self, occupancy_map):
         # Parameters (tuned for stability)
-        self._z_hit = 10.0
-        self._z_short = 0.1
-        self._z_max = 0.1
-        self._z_rand = 1.0
+        self._z_hit = 0.8
+        self._z_short = 0.05
+        self._z_max = 0.05
+        self._z_rand = 0.1
         
-        self._sigma_hit = 150.0
+        self._sigma_hit = 80.0
         self._lambda_short = 0.1
         self._max_range = 1000  # cm
         self._min_probability = 0.35
