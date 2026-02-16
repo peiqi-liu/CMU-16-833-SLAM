@@ -13,20 +13,20 @@ class SensorModel:
     """
     def __init__(self, occupancy_map):
         # Parameters (tuned for stability)
-        self._z_hit = 150
-        self._z_short = 2
-        self._z_max = 0.5
-        self._z_rand = 100
+        self._z_hit = 5
+        self._z_short = 0.15
+        self._z_max = 1
+        self._z_rand = 1000
 
         self._sigma_hit = 50.0      # cm
-        self._lambda_short = 0.01
+        self._lambda_short = 0.1
         self._max_range = 1000  # cm
         self._min_probability = 0.35
         
         self.occupancy_map = occupancy_map # Expected shape [Height, Width]
         self.resolution = 10 # cm per pixel (standard for these maps)
         self.laser_offset = 25 # cm from robot center to laser
-        self.num_beams = 30
+        self.num_beams = 90
         self._subsampling = 180 // self.num_beams  # Use every 10th beam (18 beams total)
 
     def visualize_scan(self, z_t1_arr, x_t1):
