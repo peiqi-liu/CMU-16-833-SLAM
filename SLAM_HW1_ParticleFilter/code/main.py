@@ -191,10 +191,11 @@ if __name__ == '__main__':
         """
         RESAMPLING
         """
-        if time_idx % 10 == 0:
-            X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
-        else:
-            X_bar = resampler.low_variance_sampler(X_bar)
+        if meas_type == "L":
+            if time_idx % 10 == 0:
+                X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
+            else:
+                X_bar = resampler.low_variance_sampler(X_bar)
 
         if args.visualize:
             visualize_timestep(X_bar, time_idx, args.output)

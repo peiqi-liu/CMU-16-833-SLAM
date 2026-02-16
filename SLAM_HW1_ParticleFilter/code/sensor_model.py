@@ -119,9 +119,8 @@ class SensorModel:
         
         # 5. Log-Likelihood to avoid numerical underflow
         # We sum logs instead of multiplying small decimals
-        # prob_zt1 = np.exp(np.sum(np.log(p_total + 1e-10)))
-        log_sum = np.sum(np.log(p_total + 1e-10))
-        return log_sum / np.abs(log_sum)
+        prob_zt1 = np.exp(np.sum(np.log(p_total + 1e-10)))
+        return prob_zt1
 
     def _vectorized_ray_cast(self, x_t1, num_beams):
         """
