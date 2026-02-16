@@ -50,41 +50,26 @@ class Resampling:
         """
         TODO : Add your code here
         """
-
-
         M = X_bar.shape[0]
 
         weights = X_bar[:, 3]
         weights = weights / np.sum(weights)
 
-        # Cumulative sum
-        cumulative_sum = np.cumsum(weights)
+        X_bar_resampled = np.zeros_like(X_bar)
 
-        # Systematic samples
         r = np.random.uniform(0, 1.0 / M)
-        u = r + np.arange(M) / M
+        c = weights[0]
+        i = 0
 
-        # Find indices
-        indices = np.searchsorted(cumulative_sum, u)
+        for m in range(M):
+            U = r + m / M
+            while U > c:
+                i += 1
+                c += weights[i]
 
-        # Resample
-        X_bar_resampled = X_bar[indices].copy()
+            X_bar_resampled[m, :] = X_bar[i, :]
 
-        # Reset weights to uniform
+        # Reset weights
         X_bar_resampled[:, 3] = 1.0 / M
-
-        # -------------------------------------------------
-        # Kidnapped robot recovery
-        # -------------------------------------------------
-        if occupancy_map is not None:
-            from main import init_particles_freespace
-            alpha = 0.005
-            n_random = int(alpha * M)
-
-            if n_random > 0:
-                random_indices = np.random.choice(M, n_random, replace=False)
-
-                X_bar_resampled[random_indices, :] = init_particles_freespace(n_random, occupancy_map)
-                X_bar_resampled[random_indices, 3] = 1.0 / M
 
         return X_bar_resampled
