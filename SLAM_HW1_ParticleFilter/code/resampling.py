@@ -55,6 +55,11 @@ class Resampling:
         M = X_bar.shape[0]
 
         # Normalize weights
+        # log_weights = X_bar[:, 3]
+        # max_log_weight = np.max(log_weights)  # For numerical stability
+        # weights = np.exp(log_weights - max_log_weight)
+        # weights /= np.sum(weights + 1e-15)  # Normalize
+
         weights = X_bar[:, 3]
         weights = weights / np.sum(weights)
 

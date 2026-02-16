@@ -29,7 +29,7 @@ def visualize_map(occupancy_map):
 def visualize_timestep(X_bar, tstep, output_path):
     x_locs = X_bar[:, 0] / 10.0
     y_locs = X_bar[:, 1] / 10.0
-    scat = plt.scatter(x_locs, y_locs, c='r', marker='o')
+    scat = plt.scatter(x_locs, y_locs, c='r', marker='o', s=5)
     plt.savefig('{}/{:04d}.png'.format(output_path, tstep))
     plt.pause(0.00001)
     scat.remove()
@@ -165,6 +165,9 @@ if __name__ == '__main__':
 
         # Note: this formulation is intuitive but not vectorized; looping in python is SLOW.
         # Vectorized version will receive a bonus. i.e., the functions take all particles as the input and process them in a vector.
+        # if meas_type == "L":
+        #     x_mean = X_bar[:, 0:3].mean(axis=0)
+        #     sensor_model.visualize_scan(ranges, x_mean)
         for m in range(0, num_particles):
             """
             MOTION MODEL
@@ -188,8 +191,7 @@ if __name__ == '__main__':
         """
         RESAMPLING
         """
-        X_bar = resampler.low_variance_sampler(X_bar)
-        if time_idx % 20 == 0:
+        if time_idx % 10 == 0:
             X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
         else:
             X_bar = resampler.low_variance_sampler(X_bar)
