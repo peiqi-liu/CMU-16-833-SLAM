@@ -90,7 +90,7 @@ def main():
     sensor_model = SensorModel(occupancy_map)
     resampler = Resampling()
 
-    num_particles = 500
+    num_particles = 1500
     X_bar = init_particles_freespace(num_particles, occupancy_map)
     # X_bar = init_particles_random(num_particles, occupancy_map)
 

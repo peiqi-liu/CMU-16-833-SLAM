@@ -163,6 +163,7 @@ class SensorModel:
             p3 = self.Z_PMAX * self.p_max(z_t1_k, x_t1)
             p4 = self.Z_PRAND * self.p_rand(z_t1_k, x_t1)
             p = p1 + p2 + p3 + p4
+            p /= (p1 + p2 + p3 + p4)
             if p > 0:
                 q = q + np.log(p)
         return math.exp(q)
