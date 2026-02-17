@@ -15,22 +15,32 @@ from map_reader import MapReader
 
 class SensorModel:
     def __init__(self, occupancy_map):
-        self._z_hit  = 0.55
-        self._z_rand = 0.30
-        self._z_short = 0.1
-        self._z_max  = 0.05
+        self._z_hit  = 2 # 0.55
+        self._z_rand = 30 #0.30
+        self._z_short = 0.01# 0.1
+        self._z_max  = 0.01 #0.05
 
-        self._sigma_hit = 80
-        self._lambda_short = 0.15
+        self._sigma_hit = 50 # 80
+        self._lambda_short = 0.1 # 0.15
         self._min_probability = 0.35
-        self._subsampling = 3
+        self._subsampling = 2
 
         self._map = occupancy_map
         self._resolution = 10.0
 
-        self.laserMax = 1000.0
+        self.laserMax = 800.0
         self.nLaser = 30
         self._laser_offset = 25.0
+
+        # self._z_hit = 30
+        # self._z_short = 6
+        # self._z_max =  .1
+        # self._z_rand = 200
+        # self._sigma_hit = 60
+        # self._lambda_short = .01
+
+        # self._min_probability = 0.35
+        # self._subsampling = 2
 
     def WrapToPi(self, angle):
         return angle - 2.0 * np.pi * np.floor((angle + np.pi) / (2.0 * np.pi))
@@ -71,7 +81,7 @@ class SensorModel:
         else:
             pShort = 0.0
 
-        eps = self._resolution
+        eps = 1e-3
         pMax = 1.0 if z >= (self.laserMax - eps) else 0.0
 
         if 0.0 <= z < self.laserMax:
@@ -143,14 +153,11 @@ class SensorModel:
         z_reading = z_full[idx]
         z_star, _, _ = self.rayCast(x_t1)
 
-        alpha = 0.30   # floor (like "extra rand")
-        c = 1e-3       # scale constant (tune this)
         q = 1.0
 
         for i in range(0, self.nLaser, self._subsampling):
-            p, *_ = self.getProbability(z_star[i], z_reading[i])  # your mixture pdf
-            s = alpha + (1.0 - alpha) * (p / (p + c))
-            q *= s
+            p, *_ = self.getProbability(z_star[i], z_reading[i]) 
+            q *= p
 
         return float(q)
 

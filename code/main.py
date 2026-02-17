@@ -61,25 +61,32 @@ def init_particles_freespace(num_particles, occupancy_map):
     # initialize weights for particles (1/num particle)
     w0_vals = np.ones((num_particles, 1), dtype=np.float64)
     w0_vals = w0_vals/num_particles
-
+    h, w = occupancy_map.shape
     x0_vals = []
     y0_vals = []
-  
+    theta0_vals = []
     while len(x0_vals) < num_particles:
-        y0_rand = np.random.uniform(0, 7500, (num_particles, 1))
-        x0_rand = np.random.uniform(3000, 7000, (num_particles, 1))
-        theta0_vals = np.random.uniform(-np.pi,np.pi, (num_particles, 1))
+        y0_rand = np.random.uniform(0, 8000)
+        x0_rand = np.random.uniform(0, 8000)
+        th_rand = np.random.uniform(-np.pi, np.pi)
         x_map = np.round(x0_rand/10.0).astype(np.int64)
         y_map = np.round(y0_rand/10.0).astype(np.int64)
-        for i in range(len(x_map)):
-            if np.abs(occupancy_map[y_map[i], x_map[i]]) == 0:
-                if len(x0_vals) < num_particles:
-                    x0_vals.append(x0_rand[i])    
-                    y0_vals.append(y0_rand[i])
 
-    x0_vals = np.array(x0_vals)
-    y0_vals = np.array(y0_vals)
+        if x_map < 0 or x_map >= w or y_map < 0 or y_map >= h:
+            continue
+            
+        if np.abs(occupancy_map[y_map, x_map]) == 0:
+            if len(x0_vals) < num_particles:
+                x0_vals.append(x_map * 10)    
+                y0_vals.append(y_map * 10)
+                theta0_vals.append(th_rand)
+    # x0_vals = np.array(x0_vals)
+    # y0_vals = np.array(y0_vals)
 
+    x0_vals = np.array(x0_vals, dtype=np.float64).reshape(-1, 1)
+    y0_vals = np.array(y0_vals, dtype=np.float64).reshape(-1, 1)
+    theta0_vals = np.array(theta0_vals, dtype=np.float64).reshape(-1, 1)
+    
     X_bar_init = np.hstack((x0_vals, y0_vals, theta0_vals, w0_vals))
     return X_bar_init
 
@@ -98,6 +105,7 @@ if __name__ == '__main__':
     """
     Initialize Parameters
     """
+    np.random.seed(0)
     parser = argparse.ArgumentParser()
     parser.add_argument('--path_to_map', default='../data/map/wean.dat')
     parser.add_argument('--path_to_log', default='../data/log/robotdata1.log')
@@ -190,6 +198,7 @@ if __name__ == '__main__':
         """
         RESAMPLING
         """
+        
         X_bar = resampler.low_variance_sampler(X_bar)
 
         if args.visualize:
