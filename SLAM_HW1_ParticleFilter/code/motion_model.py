@@ -1,63 +1,53 @@
+import sys
 import numpy as np
 import math
 
 class MotionModel:
+
     """
-    Odometry motion model (Thrun, Burgard, Fox - Probabilistic Robotics, Ch. 5).
+    References: Thrun, Sebastian, Wolfram Burgard, and Dieter Fox. Probabilistic robotics. MIT press, 2005.
+    [Chapter 5]
     """
+
     def __init__(self):
-        # These MUST be tuned for your dataset
-        self._alpha1 = 0.0005  # rot noise from rot
-        self._alpha2 = 0.0005  # rot noise from trans
-        self._alpha3 = 0.001  # trans noise from trans
-        self._alpha4 = 0.001  # trans noise from rot
 
-    @staticmethod
-    def _wrap_to_pi(angle):
-        return (angle + math.pi) % (2.0 * math.pi) - math.pi
+        """
+        TODO : Initialize Motion Model parameters here
+        """
 
-    @staticmethod
-    def _sample_normal(std):
-        if std <= 0.0:
-            return 0.0
-        return np.random.normal(0.0, std)
+        self.alpha_1 = 0.0001
+        self.alpha_2 = 0.0001
+        self.alpha_3 = 0.01
+        self.alpha_4 = 0.01
+
 
     def update(self, u_t0, u_t1, x_t0):
         """
-        u_t0: [x, y, theta] odom at t-1   (odom frame)
-        u_t1: [x, y, theta] odom at t     (odom frame)
-        x_t0: [x, y, theta] particle pose at t-1 (world frame)
-
-        returns x_t1: particle pose at t (world frame)
+        param[in] u_t0 : particle state odometry reading [x, y, theta] at time (t-1) [odometry_frame]   
+        param[in] u_t1 : particle state odometry reading [x, y, theta] at time t [odometry_frame]
+        param[in] x_t0 : particle state belief [x, y, theta] at time (t-1) [world_frame]
+        param[out] x_t1 : particle state belief [x, y, theta] at time t [world_frame]
         """
-        x0_odom, y0_odom, th0_odom = u_t0
-        x1_odom, y1_odom, th1_odom = u_t1
 
-        # check if no motion
-        if (x1_odom == x0_odom) and (y1_odom == y0_odom) and (th1_odom == th0_odom):
-            return x_t0
+        """
+        TODO : Add your code here
+        """
 
-        dx = x1_odom - x0_odom
-        dy = y1_odom - y0_odom
+        del_rot1 = math.atan2(u_t1[1] - u_t0[1],u_t1[0] - u_t0[0]) - u_t0[2]
+        del_trans = math.sqrt((u_t0[0]-u_t1[0])**2 + (u_t0[1]-u_t1[1])**2)
+        del_rot2 = u_t1[2] - u_t0[2] - del_rot1
 
+        b1 = (self.alpha_1*(del_rot1**2)) + (self.alpha_2*(del_trans**2)) 
+        b2 = (self.alpha_3*(del_trans**2)) + (self.alpha_4*(del_rot1**2)) + (self.alpha_4*(del_rot2**2))
+        b3 = (self.alpha_1*(del_rot2**2)) + (self.alpha_2*(del_trans**2))
 
-        deltaR1 = self._wrap_to_pi(np.atan2(dy, dx) - th0_odom)
-        deltaTrans = np.hypot(dx, dy)
-        deltaR2 = self._wrap_to_pi(th1_odom - th0_odom - deltaR1)
+        del_rot1_h = del_rot1 - np.random.normal(0,np.sqrt(b1))
+        del_trans_h = del_trans - np.random.normal(0,np.sqrt(b2))
+        del_rot2_h = del_rot2 - np.random.normal(0,np.sqrt(b3))
 
-        rot1_var = self._alpha1 * (deltaR1 ** 2) + self._alpha2 * (deltaTrans ** 2)
-        trans_var = (self._alpha3 * (deltaTrans ** 2) + self._alpha4 * (deltaR1 ** 2) + self._alpha4 * (deltaR2 ** 2))
-        rot2_var = self._alpha1 * (deltaR2 ** 2) + self._alpha2 * (deltaTrans ** 2)
+        x_t1 = np.zeros(3)
+        x_t1[0] = x_t0[0] + del_trans_h*math.cos(x_t0[2] + del_rot1_h)
+        x_t1[1] = x_t0[1] + del_trans_h*math.sin(x_t0[2] + del_rot1_h)
+        x_t1[2] = x_t0[2] + del_rot1_h + del_rot2_h
 
-        rot1_hat = self._wrap_to_pi(deltaR1 - self._sample_normal(np.sqrt(rot1_var)))
-        trans_hat = deltaTrans - self._sample_normal(np.sqrt(trans_var))
-        rot2_hat = self._wrap_to_pi(deltaR2 - self._sample_normal(np.sqrt(rot2_var)))
-
-        x, y, th = x_t0
-        x_new = x + trans_hat * np.cos(th + rot1_hat)
-        y_new = y + trans_hat * np.sin(th + rot1_hat)
-        th_new = th + rot1_hat + rot2_hat
-
-        return np.array([x_new, y_new, th_new])
-
-
+        return x_t1
