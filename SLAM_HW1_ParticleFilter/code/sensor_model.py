@@ -24,7 +24,7 @@ class SensorModel:
         self.Z_PHIT = 1000
         self.Z_PSHORT = 0.01
         self.Z_PMAX = 0.03
-        self.Z_PRAND = 100000
+        self.Z_PRAND = 50000
 
     def bresenham(self, x0, y0, x1, y1):
         """Yield integer coordinates on the line from (x0, y0) to (x1, y1).
