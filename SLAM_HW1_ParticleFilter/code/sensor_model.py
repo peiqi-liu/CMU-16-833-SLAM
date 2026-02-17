@@ -15,11 +15,11 @@ from map_reader import MapReader
 
 class SensorModel:
     def __init__(self, occupancy_map):
-        self._z_hit = 5
+        self._z_hit = 100
         self._z_short = 1
         self._z_max = 1
-        self._z_rand = 500
-        self._sigma_hit = 30
+        self._z_rand = 5000
+        self._sigma_hit = 100
         self._lambda_short = 10
         self._min_probability = 0.35
 
