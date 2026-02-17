@@ -17,121 +17,62 @@ class SensorModel:
         """
         Initialize Sensor Model parameters here
         """
-        self.map = occupancy_map
-        self.Z_MAX = 8183
-        self.P_HIT_SIGMA = 250
-        self.P_SHORT_LAMBDA = 0.01
-        self.Z_PHIT = 1000
-        self.Z_PSHORT = 0.01
-        self.Z_PMAX = 0.03
-        self.Z_PRAND = 50000
-
-    def bresenham(self, x0, y0, x1, y1):
-        """Yield integer coordinates on the line from (x0, y0) to (x1, y1).
-        Input coordinates should be integers.
-        The result will contain both the start and the end point.
-        """
-        dx = x1 - x0
-        dy = y1 - y0
-
-        xsign = 1 if dx > 0 else -1
-        ysign = 1 if dy > 0 else -1
-
-        dx = abs(dx)
-        dy = abs(dy)
-
-        if dx > dy:
-            xx, xy, yx, yy = xsign, 0, 0, ysign
-        else:
-            dx, dy = dy, dx
-            xx, xy, yx, yy = 0, ysign, xsign, 0
-
-        D = 2*dy - dx
-        y = 0
-
-        for x in range(dx + 1):
-            yield x0 + x*xx + y*yx, y0 + x*xy + y*yy
-            if D >= 0:
-                y += 1
-                D -= 2*dx
-            D += 2*dy
-
-    def ray_trace(self,x_t):
-        def bresenham_collide_pt(x1,y1,x2,y2): 
-            x1 = min(int(x1), 799)
-            y1 = int(y1) 
-            x2 = min(int(x2), 799)
-            y2 = int(y2)
-            if x1<x2:
-                final_pts = [x2,y2]
-            else:
-                final_pts = [x1,y1]
-            
-            collide_pts = self.bresenham(x1,y1,x2,y2)
-            
-            for pt in collide_pts:
-                if pt[1] >= 800:
-                    return final_pts
-                if self.occupancy_map[pt[1]][pt[0]] > self.map_threshold:
-                    final_pts = [pt[0],pt[1]]
-                    return final_pts      
-            return final_pts
-        def check_intersection(ray_origin, ray_direction, point1, point2):
-            point1 = np.array(point1)
-            point2 = np.array(point2)
-            v1 = ray_origin - point1
-            v2 = point2 - point1
-            v3 = np.array([-ray_direction[1], ray_direction[0]])
-            t1 = np.cross(v2, v1) / np.dot(v2, v3)
-            t2 = np.dot(v1, v3) / np.dot(v2, v3)
-            if t1 >= 0.0 and t2 >= 0.0 and t2 <= 1.0:
-                return [ray_origin + t1 * ray_direction]
-            return []
-
-        map_size = self.occupancy_map.shape
-        pos_x, pos_y, pos_theta = x_t
-        pos_x = pos_x/10.
-        pos_y = pos_y/10.
         
-        ray_direction_x = math.cos(pos_theta)
-        ray_direction_y = math.sin(pos_theta)
-        ray_direction = np.array([ray_direction_x, ray_direction_y])
-        ray_origin = np.array([pos_x, pos_y])
-        pts1, pts2, pts3, pts4 = [0,0], [map_size[0], 0], [map_size[0],map_size[1]], [0,map_size[1]]
-        for p1, p2 in zip([pts1, pts2, pts3, pts4], [pts2, pts3, pts4, pts1]):
-            flag = check_intersection(ray_origin, ray_direction, p1, p2)
-            if len(flag) > 0:
-                final_x, final_y = flag[0]
-                break
-        collide_pts = bresenham_collide_pt(pos_x,pos_y,final_x,final_y)
-        z_tk_star = np.linalg.norm(collide_pts - ray_origin)
-        return z_tk_star + 2.5
+        self._z_hit = 1000
+        self._z_short = 0.01
+        self._z_max = 0.03
+        self._z_rand = 50000
 
-    def p_hit(self, z_tk, x_t, z_tk_star):
-        if 0 <= z_tk <= self.Z_MAX:
-            gaussian = (math.exp(-(z_tk - z_tk_star)**2 / (2 * self.P_HIT_SIGMA**2)))/ math.sqrt(2 * math.pi * self.P_HIT_SIGMA**2)
-            return gaussian
+        self._sigma_hit = 250
+        self._lambda_short = 0.01
+
+        self.laser_offset = 25.0
+
+        self.map = occupancy_map
+
+        # Used in p_max and p_rand, optionally in ray casting
+        self._max_range = 8183
+
+        # Used for thresholding obstacles of the occupancy map
+        self._min_probability = 0.4
+
+        # Used in sampling angles in ray casting
+        self._subsampling = 1
+
+    def get_probability(self, z_tk, x_t, z_tk_star):
+        # p_hit
+        if 0 <= z_tk <= self._max_range:
+            p_hit = (math.exp(-(z_tk - z_tk_star)**2 / (2 * self._sigma_hit**2))) / (
+                math.sqrt(2 * math.pi * self._sigma_hit**2)
+            )
         else:
-            return 0.0
+            p_hit = 0.0
 
-    def p_short(self, z_tk, x_t, z_tk_star):
+        # p_short
         if 0 <= z_tk <= z_tk_star:
-            eta = 1 / (1 - math.exp(-self.P_SHORT_LAMBDA * z_tk_star))
-            return eta * self.P_SHORT_LAMBDA * math.exp(-self.P_SHORT_LAMBDA * z_tk)
+            eta = 1 / (1 - math.exp(-self._lambda_short * z_tk_star))
+            p_short = eta * self._lambda_short * math.exp(-self._lambda_short * z_tk)
         else:
-            return 0.0
+            p_short = 0.0
 
-    def p_max(self, z_tk, x_t):
-        if z_tk == self.Z_MAX:
-            return 1.0
+        # p_max
+        if z_tk == self._max_range:
+            p_max = 1.0
         else:
-            return 0.0
+            p_max = 0.0
 
-    def p_rand(self, z_tk, x_t):
-        if 0 <= z_tk < self.Z_MAX:
-            return 1.0 / self.Z_MAX
+        # p_rand
+        if 0 <= z_tk < self._max_range:
+            p_rand = 1.0 / self._max_range
         else:
-            return 0.0
+            p_rand = 0.0
+
+        return (
+            self._z_hit * p_hit +
+            self._z_short * p_short +
+            self._z_max * p_max +
+            self._z_rand * p_rand
+        )
 
  
     def beam_range_finder_model(self, z_t1_arr, x_t1):
@@ -146,36 +87,38 @@ class SensorModel:
         """
         pos_x, pos_y, pos_theta = x_t1
         temp = self.map[min(int(pos_y/10.), 799)][min(int(pos_x/10.), 799)]
-        if temp > 0.4 or temp == -1:
+        if temp >= self._min_probability or temp == -1:
             return 1e-100
-        q = 0.0
+        
+        q = 1.0
 
-        laser_x = 25.0 * np.cos(pos_theta)
-        laser_y = 25.0 * np.sin(pos_theta)
+        # Add 25 cm offset
+        laser_x = self.laser_offset* np.cos(pos_theta)
+        laser_y = self.laser_offset * np.sin(pos_theta)
         coord_x = int(round((pos_x + laser_x) / 10.0))
         coord_y = int(round((pos_y + laser_y) / 10.0))
 
-        for deg in range (-90,90, 10):
+        for deg in range(-90, 90, 10 * self._subsampling):
             z_t1_true = self.rayCast(deg, pos_theta, coord_x, coord_y)
             z_t1_k = z_t1_arr[deg+90]
-            p1 = self.Z_PHIT * self.p_hit(z_t1_k, x_t1, z_t1_true)
-            p2 = self.Z_PSHORT * self.p_short(z_t1_k, x_t1, z_t1_true)
-            p3 = self.Z_PMAX * self.p_max(z_t1_k, x_t1)
-            p4 = self.Z_PRAND * self.p_rand(z_t1_k, x_t1)
-            p = p1 + p2 + p3 + p4
-            # p /= (p1 + p2 + p3 + p4)
+            p = self.get_probability(z_t1_k, x_t1, z_t1_true)
+    
             if p > 0:
-                q = q + np.log(p)
-        return math.exp(q)
+                q *= p
+            else:
+                return 1e-50
 
+        return q
+  
 
     def rayCast(self, deg, ang, coord_x, coord_y):
         final_angle= ang + math.radians(deg)
         start_x = coord_x
         start_y = coord_y
+
         final_x = coord_x
         final_y = coord_y
-        while 0 < final_x < self.map.shape[1] and 0 < final_y < self.map.shape[0] and abs(self.map[final_y, final_x]) < 0.0000001:
+        while 0 < final_x < self.map.shape[1] and 0 < final_y < self.map.shape[0] and abs(self.map[final_y, final_x]) < 1e-7:
             start_x += 2 * np.cos(final_angle)
             start_y += 2 * np.sin(final_angle)
             final_x = int(round(start_x))
@@ -184,5 +127,3 @@ class SensorModel:
         start_p = np.array([coord_x,coord_y])
         dist = np.linalg.norm(end_p-start_p) * 10
         return dist
-if __name__=='__main__':
-    pass

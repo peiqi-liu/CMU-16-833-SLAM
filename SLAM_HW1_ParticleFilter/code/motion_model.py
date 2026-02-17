@@ -10,9 +10,9 @@ class MotionModel:
     """
 
     def __init__(self):
-
         """
-        TODO : Initialize Motion Model parameters here
+        TODO : Tune Motion Model parameters here
+        The original numbers are for reference but HAVE TO be tuned.
         """
 
         self.alpha_1 = 0.0001
