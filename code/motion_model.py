@@ -7,10 +7,10 @@ class MotionModel:
     """
     def __init__(self):
         # These MUST be tuned for your dataset
-        self._alpha1 = 0.0005  # rot noise from rot
-        self._alpha2 = 0.0005  # rot noise from trans
-        self._alpha3 = 0.001  # trans noise from trans
-        self._alpha4 = 0.001  # trans noise from rot
+        self._alpha1 = 0.002  # rot noise from rot
+        self._alpha2 = 0.002  # rot noise from trans
+        self._alpha3 = 0.01  # trans noise from trans
+        self._alpha4 = 0.01  # trans noise from rot
 
     @staticmethod
     def _wrap_to_pi(angle):
@@ -57,6 +57,7 @@ class MotionModel:
         x_new = x + trans_hat * np.cos(th + rot1_hat)
         y_new = y + trans_hat * np.sin(th + rot1_hat)
         th_new = th + rot1_hat + rot2_hat
+        th_new = self._wrap_to_pi(th + rot1_hat + rot2_hat)
 
         return np.array([x_new, y_new, th_new])
 

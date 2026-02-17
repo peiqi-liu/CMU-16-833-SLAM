@@ -15,33 +15,51 @@ from map_reader import MapReader
 
 class SensorModel:
     def __init__(self, occupancy_map):
-        self._z_hit  = 200
-        self._z_rand = 10
-        self._z_max  = 5
-        self._z_short = 10
+        self._z_hit  = 0.55
+        self._z_rand = 0.30
+        self._z_short = 0.1
+        self._z_max  = 0.05
 
-        self._sigma_hit = 250
-        self._lambda_short = 15
+        self._sigma_hit = 80
+        self._lambda_short = 0.15
         self._min_probability = 0.35
-        self._subsampling = 5
+        self._subsampling = 3
 
         self._map = occupancy_map
         self._resolution = 10.0
 
-        self.laserMax = 8183.0
+        self.laserMax = 1000.0
         self.nLaser = 30
         self._laser_offset = 25.0
 
     def WrapToPi(self, angle):
         return angle - 2.0 * np.pi * np.floor((angle + np.pi) / (2.0 * np.pi))
+    
+    def _phi_cdf(self, x):
+        # Standard normal CDF
+        return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+    def truncated_normal_pdf(self, z, mu, sigma, zmin, zmax):
+        # returns N(z | mu, sigma^2) / (CDF(zmax)-CDF(zmin)) for z in [zmin, zmax], else 0
+        if z < zmin or z > zmax or sigma <= 1e-12:
+            return 0.0
+
+        a = (zmin - mu) / sigma
+        b = (zmax - mu) / sigma
+        Z = max(self._phi_cdf(b) - self._phi_cdf(a), 1e-12)  # normalization constant
+
+        # unnormalized gaussian pdf
+        u = (z - mu) / sigma
+        pdf = math.exp(-0.5 * u * u) / (math.sqrt(2.0 * math.pi) * sigma)
+
+        return pdf / Z
 
     def getProbability(self, z_star, z_reading):
         z_star = float(np.clip(z_star, 0.0, self.laserMax))
         z = float(np.clip(z_reading, 0.0, self.laserMax))
      
         if 0.0 <= z <= self.laserMax:
-            pHit = np.exp(-0.5 * (z - z_star) ** 2 / (self._sigma_hit ** 2))
-            pHit = pHit / (np.sqrt(2.0 * np.pi) * self._sigma_hit)
+            pHit = self.truncated_normal_pdf(z, z_star, self._sigma_hit, 0.0, self.laserMax)
         else:
             pHit = 0.0
 
@@ -62,7 +80,6 @@ class SensorModel:
             pRand = 0.0
 
         p = self._z_hit * pHit + self._z_short * pShort + self._z_max * pMax + self._z_rand * pRand
-        p /= (self._z_hit + self._z_short + self._z_max + self._z_rand)
         return p, pHit, pShort, pMax, pRand
 
 
@@ -73,7 +90,8 @@ class SensorModel:
 
         xc = float(x_t1[0])
         yc = float(x_t1[1])
-        myPhi = float(x_t1[2])
+        myPhi = self.WrapToPi(float(x_t1[2]))
+
 
         L = self._laser_offset
         offSetX = xc + L * np.cos(myPhi)
@@ -106,7 +124,10 @@ class SensorModel:
 
                 cell = self._map[yInt, xInt]
 
-                if (cell < 0) or (cell >= self._min_probability):
+                if cell < 0:
+                    continue  # unknown: keep going
+
+                if cell >= self._min_probability:
                     beamsRange[i] = min(rs, self.laserMax)
                     laserX[i] = xInt
                     laserY[i] = yInt
@@ -119,28 +140,18 @@ class SensorModel:
     def beam_range_finder_model(self, z_t1_arr, x_t1):
         z_full = np.asarray(z_t1_arr, dtype=float)
         idx = np.linspace(0, z_full.size - 1, self.nLaser).astype(int)
-
         z_reading = z_full[idx]
         z_star, _, _ = self.rayCast(x_t1)
-        print("pose:", x_t1)
-        print("z_star first 5:", z_star[:5])
-        print("z_star min/max:", np.min(z_star), np.max(z_star))
-        print("-----")
 
-        print("z_reading min/max:", np.min(z_reading), np.max(z_reading))
-        print("z_reading (first 5):", z_reading[:5])
-        print("z_reading last 5 :", z_reading[-5:])
+        alpha = 0.30   # floor (like "extra rand")
+        c = 1e-3       # scale constant (tune this)
+        q = 1.0
 
-
-
-        log_q = 0.0
-        n_used = 0
         for i in range(0, self.nLaser, self._subsampling):
-            p, _, _, _, _ = self.getProbability(z_star[i], z_reading[i])
-            log_q += np.log(max(p, 1e-12))
-            n_used += 1
+            p, *_ = self.getProbability(z_star[i], z_reading[i])  # your mixture pdf
+            s = alpha + (1.0 - alpha) * (p / (p + c))
+            q *= s
 
-        log_q /= max(n_used, 1)  
-        return float(np.exp(log_q))
+        return float(q)
 
 
