@@ -4,12 +4,9 @@
     Updated by Wei Dong (weidong@andrew.cmu.edu), 2021
 '''
 
+import argparse
 import numpy as np
 import sys, os
-import sys
-import pdb
-import json
-import argparse
 
 from map_reader import MapReader
 from motion_model import MotionModel
@@ -17,13 +14,6 @@ from sensor_model import SensorModel
 from resampling import Resampling
 
 from matplotlib import pyplot as plt
-from matplotlib import figure as fig
-import time
-import random
-
-t = 11203
-random.seed(t)
-np.random.seed(t)
 
 def visualize_map(occupancy_map):
     fig = plt.figure()
@@ -40,6 +30,7 @@ def visualize_timestep(X_bar, tstep, output_path):
     plt.savefig('{}/{:04d}.png'.format(output_path, tstep))
     plt.pause(0.00001)
     scat.remove()
+
 
 def init_particles_random(num_particles, occupancy_map):
 
@@ -91,10 +82,12 @@ if __name__ == '__main__':
     parser.add_argument('--path_to_map', default='../data/map/wean.dat')
     parser.add_argument('--path_to_log', default='../data/log/robotdata1.log')
     parser.add_argument('--output', default='results')
-    parser.add_argument('--num_particles', default=500, type=int)
+    parser.add_argument('--num_particles', default=1000, type=int)
     parser.add_argument('--visualize', action='store_true')
+    parser.add_argument('--seed', default=11203, type=int)
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
     src_path_map = args.path_to_map
     src_path_log = args.path_to_log
     os.makedirs(args.output, exist_ok=True)
@@ -120,14 +113,10 @@ if __name__ == '__main__':
     for time_idx, line in enumerate(logfile):
 
         # Read a single 'line' from the log file (can be either odometry or laser measurement)
-        # L : laser scan measurement, O : odometry measurement
-        meas_type = line[0]
+        meas_type = line[0] # L : laser scan measurement, O : odometry measurement
+        meas_vals = np.fromstring(line[2:], dtype=np.float64, sep=' ') # convert measurement values from string to double
 
-        # convert measurement values from string to double
-        meas_vals = np.fromstring(line[2:], dtype=np.float64, sep=' ')
-
-        # odometry reading [x, y, theta] in odometry frame
-        odometry_robot = meas_vals[0:3]
+        odometry_robot = meas_vals[0:3] # odometry reading [x, y, theta] in odometry frame
         time_stamp = meas_vals[-1]
 
         # ignore pure odometry measurements for (faster debugging)
@@ -135,13 +124,10 @@ if __name__ == '__main__':
         #     continue
 
         if (meas_type == "L"):
-            # [x, y, theta] coordinates of laser in odometry frame
-            odometry_laser = meas_vals[3:6]
-            # 180 range measurement values from single laser scan
-            ranges = meas_vals[6:-1]
-
-        print("Processing time step {} at time {}s".format(
-            time_idx, time_stamp))
+             odometry_laser = meas_vals[3:6] # [x, y, theta] coordinates of laser in odometry frame
+             ranges = meas_vals[6:-1] # 180 range measurement values from single laser scan
+        
+        print("Processing time step " + str(time_idx) + " at time " + str(time_stamp) + "s")
 
         if first_time_idx:
             u_t0 = odometry_robot
@@ -153,7 +139,11 @@ if __name__ == '__main__':
 
         # Note: this formulation is intuitive but not vectorized; looping in python is SLOW.
         # Vectorized version will receive a bonus. i.e., the functions take all particles as the input and process them in a vector.
+        # if meas_type == "L":
+        #     x_mean = X_bar[:, 0:3].mean(axis=0)
+        #     sensor_model.visualize_scan(ranges, x_mean)
         for m in range(0, num_particles):
+
             """
             MOTION MODEL
             """
@@ -166,10 +156,10 @@ if __name__ == '__main__':
             if (meas_type == "L"):
                 z_t = ranges
                 w_t = sensor_model.beam_range_finder_model(z_t, x_t1)
-                X_bar_new[m, :] = np.hstack((x_t1, w_t))
+                X_bar_new[m,:] = np.hstack((x_t1, w_t))
             else:
-                X_bar_new[m, :] = np.hstack((x_t1, X_bar[m, 3]))
-
+                X_bar_new[m,:] = np.hstack((x_t1, X_bar[m,3]))
+        
         X_bar = X_bar_new
         u_t0 = u_t1
 
@@ -177,6 +167,11 @@ if __name__ == '__main__':
         RESAMPLING
         """
         X_bar = resampler.low_variance_sampler(X_bar)
+        # if meas_type == "L":
+        #     if time_idx % 10 == 0:
+        #         X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)
+        #     else:
+        #         X_bar = resampler.low_variance_sampler(X_bar)
 
         if args.visualize:
             visualize_timestep(X_bar, time_idx, args.output)

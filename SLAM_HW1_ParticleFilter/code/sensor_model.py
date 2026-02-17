@@ -39,7 +39,7 @@ class SensorModel:
         # Used in sampling angles in ray casting
         self._subsampling = 1
 
-    def get_probability(self, z_tk, x_t, z_tk_star):
+    def get_probability(self, z_tk, z_tk_star):
         # p_hit
         if 0 <= z_tk <= self._max_range:
             p_hit = (math.exp(-(z_tk - z_tk_star)**2 / (2 * self._sigma_hit**2))) / (
@@ -101,7 +101,7 @@ class SensorModel:
         for deg in range(-90, 90, 10 * self._subsampling):
             z_t1_true = self.rayCast(deg, pos_theta, coord_x, coord_y)
             z_t1_k = z_t1_arr[deg+90]
-            p = self.get_probability(z_t1_k, x_t1, z_t1_true)
+            p = self.get_probability(z_t1_k, z_t1_true)
     
             if p > 0:
                 q *= p
