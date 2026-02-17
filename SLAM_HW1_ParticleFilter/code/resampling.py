@@ -38,7 +38,6 @@ class Resampling:
         TODO : Add your code here
         """
         M = X_bar.shape[0]
-        X_bar_resampled = np.zeros_like(X_bar)
 
         # Normalize weights (do NOT modify X_bar in-place)
         weights = X_bar[:, 3].astype(float)
@@ -48,23 +47,20 @@ class Resampling:
         else:
             weights = weights / w_sum
 
+        # Cumulative distribution
+        cumulative = np.cumsum(weights)
+
+        # Systematic samples
         r = np.random.uniform(0.0, 1.0 / M)
-        c = weights[0]
-        i = 0
+        U = r + np.arange(M) / M
 
-        for m in range(M):
-            U = r + m / M
-            while U > c:
-                i += 1
-                # guard (numerical issues)
-                if i >= M:
-                    i = M - 1
-                    break
-                c += weights[i]
+        # Vectorized index lookup
+        indices = np.searchsorted(cumulative, U, side="left")
 
-            X_bar_resampled[m, :] = X_bar[i, :]
+        # Resample in one shot
+        X_bar_resampled = X_bar[indices].copy()
 
-        # Reset weights to uniform after resampling (standard PF)
+        # Reset weights to uniform
         X_bar_resampled[:, 3] = 1.0 / M
 
         return X_bar_resampled
