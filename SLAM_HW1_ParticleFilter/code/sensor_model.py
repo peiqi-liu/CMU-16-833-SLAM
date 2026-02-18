@@ -37,7 +37,8 @@ class SensorModel:
         self._min_probability = 0.4
 
         # Used in sampling angles in ray casting
-        self._subsampling = 1
+        self._subsampling = 10
+        self._ray_cast_step = 2
 
     def get_probability(self, z_tk, z_tk_star):
         # p_hit
@@ -98,7 +99,7 @@ class SensorModel:
         coord_x = int(round((pos_x + laser_x) / 10.0))
         coord_y = int(round((pos_y + laser_y) / 10.0))
 
-        for deg in range(-90, 90, 10 * self._subsampling):
+        for deg in range(-90, 90, self._subsampling):
             z_t1_true = self.rayCast(deg, pos_theta, coord_x, coord_y)
             z_t1_k = z_t1_arr[deg+90]
             p = self.get_probability(z_t1_k, z_t1_true)
@@ -119,8 +120,8 @@ class SensorModel:
         final_x = coord_x
         final_y = coord_y
         while 0 < final_x < self.map.shape[1] and 0 < final_y < self.map.shape[0] and abs(self.map[final_y, final_x]) < 1e-7:
-            start_x += 2 * np.cos(final_angle)
-            start_y += 2 * np.sin(final_angle)
+            start_x += self._ray_cast_step * np.cos(final_angle)
+            start_y += self._ray_cast_step * np.sin(final_angle)
             final_x = int(round(start_x))
             final_y = int(round(start_y))
         end_p = np.array([final_x,final_y])
