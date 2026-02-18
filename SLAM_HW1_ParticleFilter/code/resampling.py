@@ -30,27 +30,53 @@ class Resampling:
         X_bar_resampled =  np.zeros_like(X_bar)
         return X_bar_resampled
     
-    def low_variance_sampler(self, X_bar):
+    
+    def low_variance_sampler(self, X_bar, vectorized=False):
         """
-        param[in] X_bar : [num_particles x 4] sized array containing [x, y, theta, wt] values for all particles
-        param[out] X_bar_resampled : [num_particles x 4] sized array containing [x, y, theta, wt] values for resampled set of particles
+        param[in] X_bar : [M x 4] sized array containing [x, y, theta, wt]
+        param[in] vectorized : if True use numpy vectorized version, else use loop version
+        param[out] X_resampled : [M x 4] resampled particles
         """
-        X_bar_resampled = []
-        M = len(X_bar)
-        wt = X_bar[:,3]
-        r = random.uniform(0, 1.0/M)
-        wt /= wt.sum()
-        c = wt[0]
-        i = 0
-        for m in range(M):
-            u = r + (m)*(1.0/M)
-            while u>c:
-                i = i +1
-                c = c + wt[i]
-            X_bar_resampled.append(X_bar[i])
-        X_bar_resampled = np.asarray(X_bar_resampled)
+        M = X_bar.shape[0]
 
-        return X_bar_resampled
+        # Normalize weights
+        w = X_bar[:, 3].astype(np.float64)
+        w_sum = w.sum()
+        if w_sum <= 0 or not np.isfinite(w_sum):
+            w[:] = 1.0 / M
+        else:
+            w /= w_sum
+
+        if vectorized:
+            # ---- Vectorized low variance resampling ----
+            cdf = np.cumsum(w)
+            cdf[-1] = 1.0  # guard float drift
+
+            r = np.random.uniform(0.0, 1.0 / M)
+            u = r + (np.arange(M) / M)
+
+            idx = np.searchsorted(cdf, u, side="left")
+            X_resampled = X_bar[idx].copy()
+        else:
+            # ---- Original loop-based low variance resampling ----
+            X_list = []
+            r = random.uniform(0.0, 1.0 / M)
+            c = w[0]
+            i = 0
+
+            for m in range(M):
+                u = r + (m / M)
+                while u > c:
+                    i += 1
+                    c += w[i]
+                X_list.append(X_bar[i])
+
+            X_resampled = np.asarray(X_list, dtype=np.float64)
+
+        # Reset weights to uniform
+        X_resampled[:, 3] = 1.0 / M
+        return X_resampled
+
 
 if __name__ == "__main__":
     pass

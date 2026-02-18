@@ -82,9 +82,11 @@ if __name__ == '__main__':
     parser.add_argument('--path_to_map', default='../data/map/wean.dat')
     parser.add_argument('--path_to_log', default='../data/log/robotdata1.log')
     parser.add_argument('--output', default='results')
-    parser.add_argument('--num_particles', default=1000, type=int)
+    parser.add_argument('--num_particles', default=1500, type=int)
     parser.add_argument('--visualize', action='store_true')
     parser.add_argument('--seed', default=11203, type=int)
+    parser.add_argument('--vectorized', action='store_true',
+                    help='Use vectorized motion + vectorized resampling (bonus)')
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -142,23 +144,37 @@ if __name__ == '__main__':
         # if meas_type == "L":
         #     x_mean = X_bar[:, 0:3].mean(axis=0)
         #     sensor_model.visualize_scan(ranges, x_mean)
-        for m in range(0, num_particles):
+        # Note: this formulation is intuitive but not vectorized; looping in python is SLOW.
 
-            """
-            MOTION MODEL
-            """
-            x_t0 = X_bar[m, 0:3]
-            x_t1 = motion_model.update(u_t0, u_t1, x_t0)
+        if args.vectorized:
+            X_pred = motion_model.update_vectorization(u_t0, u_t1, X_bar[:, 0:3])  # (M,3)
+            X_bar_new[:, 0:3] = X_pred
 
-            """
-            SENSOR MODEL
-            """
-            if (meas_type == "L"):
+            if meas_type == "L":
                 z_t = ranges
-                w_t = sensor_model.beam_range_finder_model(z_t, x_t1)
-                X_bar_new[m,:] = np.hstack((x_t1, w_t))
+                w = np.empty(num_particles, dtype=np.float64)
+                for m in range(num_particles):
+                    w[m] = sensor_model.beam_range_finder_model(z_t, X_pred[m])
+                X_bar_new[:, 3] = w
             else:
-                X_bar_new[m,:] = np.hstack((x_t1, X_bar[m,3]))
+                X_bar_new[:, 3] = X_bar[:, 3]
+
+        else:
+
+            for m in range(num_particles):
+
+                # MOTION MODEL
+                x_t0 = X_bar[m, 0:3]
+                x_t1 = motion_model.update(u_t0, u_t1, x_t0)
+
+                # SENSOR MODEL
+                if meas_type == "L":
+                    z_t = ranges
+                    w_t = sensor_model.beam_range_finder_model(z_t, x_t1)
+                    X_bar_new[m, :] = np.hstack((x_t1, w_t))
+                else:
+                    X_bar_new[m, :] = np.hstack((x_t1, X_bar[m, 3]))
+
         
         X_bar = X_bar_new
         u_t0 = u_t1
@@ -166,7 +182,10 @@ if __name__ == '__main__':
         """
         RESAMPLING
         """
-        X_bar = resampler.low_variance_sampler(X_bar)
+   
+        X_bar = resampler.low_variance_sampler(X_bar, vectorized=args.vectorized)
+        
+        
         # if meas_type == "L":
         #     if time_idx % 10 == 0:
         #         X_bar = resampler.low_variance_sampler(X_bar, occupancy_map)

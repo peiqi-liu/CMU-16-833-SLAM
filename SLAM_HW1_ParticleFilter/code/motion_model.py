@@ -51,3 +51,38 @@ class MotionModel:
         x_t1[2] = x_t0[2] + del_rot1_h + del_rot2_h
 
         return x_t1
+    
+
+    def update_vectorization(self, u_t0, u_t1, X_t0):
+        del_rot1 = math.atan2(u_t1[1] - u_t0[1], u_t1[0] - u_t0[0]) - u_t0[2]
+        del_trans = math.sqrt((u_t0[0]-u_t1[0])**2 + (u_t0[1]-u_t1[1])**2)
+        del_rot2 = u_t1[2] - u_t0[2] - del_rot1
+
+        b1 = self.alpha_1*(del_rot1**2) + self.alpha_2*(del_trans**2)
+        b2 = self.alpha_3*(del_trans**2) + self.alpha_4*(del_rot1**2) + self.alpha_4*(del_rot2**2)
+        b3 = self.alpha_1*(del_rot2**2) + self.alpha_2*(del_trans**2)
+
+        M = X_t0.shape[0]
+
+        del_rot1_h = del_rot1 - np.random.normal(0.0, np.sqrt(b1), size=M)
+        del_trans_h = del_trans - np.random.normal(0.0, np.sqrt(b2), size=M)
+        del_rot2_h = del_rot2 - np.random.normal(0.0, np.sqrt(b3), size=M)
+
+        x = X_t0[:, 0]
+        y = X_t0[:, 1]
+        th = X_t0[:, 2]
+
+        x1 = x + del_trans_h * np.cos(th + del_rot1_h)
+        y1 = y + del_trans_h * np.sin(th + del_rot1_h)
+        th1 = th + del_rot1_h + del_rot2_h
+
+        return np.stack([x1, y1, th1], axis=1)
+
+    
+
+
+
+
+
+
+    
