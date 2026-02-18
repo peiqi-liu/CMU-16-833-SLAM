@@ -29,6 +29,7 @@ class SensorModel:
         self.laser_offset = 25.0
 
         self.map = occupancy_map
+        self._resolution = 10
 
         # Used in p_max and p_rand, optionally in ray casting
         self._max_range = 8183
@@ -87,7 +88,7 @@ class SensorModel:
         TODO : Add your code here
         """
         pos_x, pos_y, pos_theta = x_t1
-        temp = self.map[min(int(pos_y/10.), 799)][min(int(pos_x/10.), 799)]
+        temp = self.map[min(int(pos_y/self._resolution), 799)][min(int(pos_x/self._resolution), 799)]
         if temp >= self._min_probability or temp == -1:
             return 1e-100
         
@@ -96,8 +97,8 @@ class SensorModel:
         # Add 25 cm offset
         laser_x = self.laser_offset* np.cos(pos_theta)
         laser_y = self.laser_offset * np.sin(pos_theta)
-        coord_x = int(round((pos_x + laser_x) / 10.0))
-        coord_y = int(round((pos_y + laser_y) / 10.0))
+        coord_x = int(round((pos_x + laser_x) / self._resolution))
+        coord_y = int(round((pos_y + laser_y) / self._resolution))
 
         for deg in range(-90, 90, self._subsampling):
             z_t1_true = self.rayCast(deg, pos_theta, coord_x, coord_y)
@@ -126,5 +127,5 @@ class SensorModel:
             final_y = int(round(start_y))
         end_p = np.array([final_x,final_y])
         start_p = np.array([coord_x,coord_y])
-        dist = np.linalg.norm(end_p-start_p) * 10
+        dist = np.linalg.norm(end_p-start_p) * self._resolution
         return dist
