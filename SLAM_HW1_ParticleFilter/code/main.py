@@ -182,9 +182,11 @@ if __name__ == '__main__':
         """
         RESAMPLING
         """
-   
-        X_bar = resampler.low_variance_sampler(X_bar, vectorized=args.vectorized)
-        
+        if args.vectorized:
+            X_bar = resampler.low_variance_sampler_vectorized(X_bar)
+        else:
+            X_bar = resampler.low_variance_sampler(X_bar)
+
         
         # if meas_type == "L":
         #     if time_idx % 10 == 0:
