@@ -31,25 +31,56 @@ class Resampling:
         return X_bar_resampled
     
     
-    def low_variance_sampler(self, X_bar):
+    def low_variance_sampler(self, X_bar, occupancy_map=None):
         """
-        param[in] X_bar : [num_particles x 4] sized array containing [x, y, theta, wt] values for all particles
-        param[out] X_bar_resampled : [num_particles x 4] sized array containing [x, y, theta, wt] values for resampled set of particles
+        param[in]  X_bar : [M x 4] array [x, y, theta, wt]
+        param[out] X_bar_resampled : [M x 4] resampled particles
         """
-        X_bar_resampled = []
+
         M = len(X_bar)
-        wt = X_bar[:,3]
-        r = random.uniform(0, 1.0/M)
-        wt /= wt.sum()
+        X_bar_resampled = []
+
+        # ---- Normalize weights safely ----
+        wt = X_bar[:, 3].astype(np.float64)
+        w_sum = wt.sum()
+
+        if w_sum <= 0 or not np.isfinite(w_sum):
+            wt[:] = 1.0 / M
+        else:
+            wt /= w_sum
+
+        # ---- Low variance resampling ----
+        r = random.uniform(0, 1.0 / M)
         c = wt[0]
         i = 0
+
         for m in range(M):
-            u = r + (m)*(1.0/M)
-            while u>c:
-                i = i +1
-                c = c + wt[i]
-            X_bar_resampled.append(X_bar[i])
+            u = r + m * (1.0 / M)
+            while u > c:
+                i += 1
+                c += wt[i]
+            X_bar_resampled.append(X_bar[i].copy())
+
         X_bar_resampled = np.asarray(X_bar_resampled)
+
+        # ---- Robot Kidnapping Recovery ----
+        if occupancy_map is not None:
+            M_rand = 5
+
+            if M_rand > 0:
+                from main import init_particles_freespace
+
+                X_random = init_particles_freespace(
+                    num_particles=M_rand,
+                    occupancy_map=occupancy_map
+                )
+
+                # Replace random subset of particles
+                replace_idx = np.random.choice(M, M_rand, replace=False)
+                X_bar_resampled[replace_idx] = X_random
+
+        # ---- Reset weights uniformly ----
+        X_bar_resampled[:, 3] = 1.0 / M
 
         return X_bar_resampled
     
